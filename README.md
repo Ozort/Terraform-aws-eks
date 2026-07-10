@@ -1,45 +1,41 @@
-# Terraform AWS EKS Cluster
+# Terraform AWS EKS
 
-Infrastructure-as-code project that provisions a fully functional Amazon EKS cluster on AWS using Terraform. Includes all supporting infrastructure: VPC, subnets, IAM roles, security groups, a managed node group, and an EC2 bastion host for cluster access.
+A modular Terraform project that provisions an Amazon EKS cluster and its supporting infrastructure on AWS. The project is structured into four independent modules — state, vpc, iam, and ec2 — each responsible for a distinct layer of the infrastructure.
 
 ---
 
 ## Architecture
 
 ```
-AWS
-└── VPC (custom CIDR)
-    ├── Public Subnet 1 (AZ-a)
-    ├── Public Subnet 2 (AZ-b)
-    ├── Internet Gateway
-    ├── EC2 Bastion Host (kubectl access)
-    └── EKS Cluster (ed-eks-01)
-        └── Managed Node Group (2x t3.micro, ON_DEMAND)
+root/
+├── main.tf              # Wires all modules together
+├── variables.tf         # Root-level variable declarations
+├── outputs.tf           # Exposes key values after apply
+├── terraform.tfvars.example
+└── modules/
+    ├── state/           # S3 bucket + DynamoDB for remote state
+    ├── vpc/             # VPC, subnets, IGW, route tables, security group
+    ├── iam/             # IAM roles, EKS cluster, node group
+    └── ec2/             # Bastion/worker EC2 instance
 ```
 
-**Remote state** is stored in an S3 bucket with versioning and AES256 encryption enabled. A DynamoDB table handles state locking to prevent concurrent runs.
+### What gets created
 
----
-
-## Resources Provisioned
-
-| File | Resources |
-|------|-----------|
-| `vpc.tf` | VPC, 2 public subnets, internet gateway, route tables, security groups |
-| `iam.tf` | EKS cluster role, worker node role, autoscaler policy, instance profile, `aws_eks_cluster`, `aws_eks_node_group` |
-| `main.tf` | EC2 bastion host, S3 state bucket, DynamoDB lock table |
-| `provider.tf` | AWS provider configuration |
-| `variables.tf` | Input variables |
-| `outputs.tf` | Cluster endpoint and other outputs |
+| Module | Resources |
+|--------|-----------|
+| `state` | S3 bucket (`ozort-terraform-state-file`) with versioning + AES256 encryption, DynamoDB table for state locking |
+| `vpc` | VPC, 2 public subnets across 2 AZs, Internet Gateway, Route Table, Security Group (SSH ingress + all egress) |
+| `iam` | IAM roles (`ed-eks-master`, `ed-eks-worker`), policy attachments, EKS cluster (`ed-eks-01`), managed node group (`dev`) |
+| `ec2` | EC2 instance (bastion) in subnet 1 with public IP |
 
 ---
 
 ## Prerequisites
 
-- [Terraform](https://developer.hashicorp.com/terraform/install) >= 1.0
-- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) configured with appropriate permissions
-- [kubectl](https://kubernetes.io/docs/tasks/tools/) installed
-- An existing EC2 key pair in your target AWS region
+- [Terraform](https://developer.hashicorp.com/terraform/downloads) >= 1.0
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/install-cliv2.html) configured with appropriate credentials
+- An existing AWS EC2 Key Pair
+- IAM permissions to create VPC, EKS, EC2, IAM, S3, and DynamoDB resources
 
 ---
 
@@ -52,84 +48,142 @@ git clone https://github.com/Ozort/Terraform-aws-eks.git
 cd Terraform-aws-eks
 ```
 
-### 2. Update variables
+### 2. Create your tfvars file
 
-Edit `variables.tf` or create a `terraform.tfvars` file with your values:
-
-```hcl
-key        = "your-ec2-keypair-name"
-vpc-cidr   = "10.0.0.0/16"
-subnet1-az = "us-east-1a"
-subnet2-az = "us-east-1b"
+```bash
+cp terraform.tfvars.example terraform.tfvars
 ```
 
-### 3. Initialise and apply
+Edit `terraform.tfvars` with your real values:
+
+```hcl
+ami          = "ami-0c02fb55956c7d316"   # Amazon Linux 2 AMI for your region
+key          = "your-ec2-keypair-name"
+vpc-cidr     = "10.10.0.0/16"
+subnet1-cidr = "10.10.1.0/24"
+subnet2-cidr = "10.10.2.0/24"
+subnet1-az   = "us-east-1a"
+subnet2-az   = "us-east-1b"
+```
+
+### 3. Initialise Terraform
 
 ```bash
 terraform init
+```
+
+### 4. Review the plan
+
+```bash
 terraform plan
+```
+
+### 5. Apply
+
+```bash
 terraform apply
 ```
 
-> The EKS control plane takes approximately 10–15 minutes to provision.
-
-### 4. Access the cluster via the bastion
-
-```bash
-# SSH into the bastion EC2
-ssh -i your-key.pem ec2-user@<bastion-public-ip>
-
-# Configure kubectl on the bastion
-aws eks update-kubeconfig --region <your-region> --name ed-eks-01
-
-# Verify nodes are ready
-kubectl get nodes
-```
+> **Note:** The S3 bucket and DynamoDB table (state module) must be created before configuring an S3 backend. Run `terraform apply` first, then add the backend config and run `terraform init` again to migrate state.
 
 ---
 
-## IAM Roles
+## Variables
 
-**Cluster role (`ed-eks-master`)** — assumed by the EKS control plane. Attached policies:
+| Name | Description | Default |
+|------|-------------|---------|
+| `region` | AWS region to deploy resources | `us-east-1` |
+| `ami` | AMI ID for the EC2 instance | required |
+| `key` | Name of the SSH key pair | required |
+| `instance-type` | EC2 instance type | `t3.micro` |
+| `vpc-cidr` | CIDR block for the VPC | `10.10.0.0/16` |
+| `subnet1-cidr` | CIDR block for subnet 1 | `10.10.1.0/24` |
+| `subnet2-cidr` | CIDR block for subnet 2 | `10.10.2.0/24` |
+| `subnet1-az` | Availability zone for subnet 1 | `us-east-1a` |
+| `subnet2-az` | Availability zone for subnet 2 | `us-east-1b` |
+
+---
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| `endpoint` | EKS cluster API server endpoint |
+| `worker_node_sg_id` | Security group ID attached to worker nodes |
+| `s3_bucket_arn` | ARN of the S3 bucket used for Terraform state |
+| `dynamodb_table_name` | Name of the DynamoDB table used for state locking |
+
+---
+
+## EKS Cluster Details
+
+| Property | Value |
+|----------|-------|
+| Cluster name | `ed-eks-01` |
+| Node group name | `dev` |
+| Node instance type | `t3.micro` |
+| Capacity type | ON_DEMAND |
+| Node disk size | 20 GB |
+| Desired nodes | 2 |
+| Min nodes | 1 |
+| Max nodes | 3 |
+
+### IAM Policies attached to master role
+
 - `AmazonEKSClusterPolicy`
 - `AmazonEKSServicePolicy`
 - `AmazonEKSVPCResourceController`
 
-**Worker role (`ed-eks-worker`)** — assumed by EC2 node instances. Attached policies:
+### IAM Policies attached to worker role
+
 - `AmazonEKSWorkerNodePolicy`
 - `AmazonEKS_CNI_Policy`
 - `AmazonEC2ContainerRegistryReadOnly`
 - `AmazonSSMManagedInstanceCore`
 - `AWSXRayDaemonWriteAccess`
 - `AmazonS3ReadOnlyAccess`
-- Custom autoscaler policy (describe/set ASG desired capacity)
+- Custom autoscaler policy
 
 ---
 
-## Node Group Configuration
+## Remote State (S3 Backend)
 
-| Setting | Value |
-|---------|-------|
-| Instance type | t3.micro |
-| Capacity type | ON_DEMAND |
-| Disk size | 20 GB |
-| Desired nodes | 2 |
-| Min nodes | 1 |
-| Max nodes | 3 |
+After the state module resources are created, you can configure the S3 backend by adding the following to a `backend.tf` file and running `terraform init`:
+
+```hcl
+terraform {
+  backend "s3" {
+    bucket         = "ozort-terraform-state-file"
+    key            = "terraform.tfstate"
+    region         = "us-east-1"
+    dynamodb_table = "terraform-up-and-running-locks"
+    encrypt        = true
+  }
+}
+```
 
 ---
 
-## Cleanup
+## Security Notes
+
+- `terraform.tfvars` is gitignored — never commit real values
+- Use `terraform.tfvars.example` as a reference template
+- The security group allows SSH (port 22) from `0.0.0.0/0` — restrict this to your IP in production
+- All egress traffic is allowed — tighten this for production workloads
+
+---
+
+## Teardown
 
 ```bash
 terraform destroy
 ```
 
-> Make sure to destroy the cluster before manually deleting any VPC or subnet resources, as AWS will block deletion of resources still in use by EKS.
+> If you have versioned objects in the S3 bucket, you will need to delete all object versions manually before Terraform can remove the bucket.
 
 ---
 
-## Notes
+## Author
 
-- The S3 bucket has `prevent_destroy = true` set to protect the Terraform state file from accidental deletion. Remove this lifecycle rule before running `terraform destroy` if you want the bucket cleaned up too.
-- Security groups currently allow SSH from `0.0.0.0/0`. Restrict the CIDR to your IP in any non-learning environment.
+**Abu Bobby (Ozort)**  
+GitHub: [github.com/Ozort](https://github.com/Ozort)
