@@ -1,35 +1,53 @@
+#Defaut values will only be applied if specific values are not defined in the .tfvars file
+
 variable "region" {
-  default = "us-east-1"
+  type        = string
+  description = "AWS region to deploy resources"
+  default     = "us-east-1"
 }
 
 variable "ami" {
-  default = "ami-00e801948462f718a"
+  type        = string
+  description = "AMI ID for the EC2 instance"
 }
 
 variable "key" {
-  default = "mytfkey"
+  type        = string
+  description = "Name of the SSH key pair"
 }
 
 variable "instance-type" {
-  default = "t3.micro"
+  type        = string
+  description = "EC2 instance type"
+  default     = "t3.micro"
 }
 
 variable "vpc-cidr" {
-  default = "10.10.0.0/16"
+  type        = string
+  description = "CIDR block for the VPC"
+  default     = "10.10.0.0/16"
 }
 
 variable "subnet1-cidr" {
-  default = "10.10.1.0/24"
+  type        = string
+  description = "CIDR block for the subnet1"
+  default     = "10.10.1.0/24"
 }
 
 variable "subnet2-cidr" {
-  default = "10.10.2.0/24"
+  type        = string
+  description = "CIDR block for the subnet2"
+  default     = "10.10.2.0/24"
 }
 
 variable "subnet1-az" {
-  default = "us-east-1a"
+  type        = string
+  description = "Availability zone for the subnet"
+  default     = "us-east-1a"
 }
 
 variable "subnet2-az" {
-  default = "us-east-1b"
+  type        = string
+  description = "Availability zone for the subnet"
+  default     = "us-east-1b"
 }

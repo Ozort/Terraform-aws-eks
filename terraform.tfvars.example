@@ -1,0 +1,7 @@
+ami         = "ami-xxxxxxxxxxxxxxxxx"
+key         = "your-key-pair-name"
+vpc_cidr    = "10.0.0.*/**"
+subnet1-cidr = "10.10.1.*/**"
+subnet2-cidr = "10.10.2.*/**"
+subnet1-az   = "us-east-1a"
+subnet2-az   = "us-east-1b"

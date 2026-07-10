@@ -1,7 +1,7 @@
 resource "aws_security_group" "worker_node_sg" {
   name        = "eks-test"
   description = "Allow ssh inbound traffic"
-  vpc_id      = aws_vpc.my-tf-vpc.id
+  vpc_id      = module.vpc.vpc_id
 }
 
 resource "aws_vpc_security_group_ingress_rule" "allow_public_ssh_ipv4" {

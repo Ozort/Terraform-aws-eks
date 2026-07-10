@@ -1,57 +1,40 @@
-resource "aws_instance" "my-tf-ec2" {
+# ─────────────────────────────────────────────
+# ROOT main.tf
+# Calls each module and wires their outputs
+# together as inputs to other modules.
+# No AWS resources are defined here directly.
+# ─────────────────────────────────────────────
+
+module "state" {
+  source = "./modules/state"
+}
+
+module "vpc" {
+  source = "./modules/vpc"
+
+  vpc-cidr     = var.vpc-cidr
+  subnet1-cidr = var.subnet1-cidr
+  subnet2-cidr = var.subnet2-cidr
+  subnet1-az   = var.subnet1-az
+  subnet2-az   = var.subnet2-az
+}
+
+module "iam" {
+  source = "./modules/iam"
+
+  subnet_1_id = module.vpc.subnet_1_id
+  subnet_2_id = module.vpc.subnet_2_id
+  sg_id       = module.vpc.sg_id
+  key         = var.key
+}
+
+module "ec2" {
+  source = "./modules/ec2"
+
   ami           = var.ami
-  instance_type = var.instance-type
-  key_name = var.key
-  associate_public_ip_address = true
-  subnet_id = aws_subnet.my-tf-subnet-1.id
-  vpc_security_group_ids = [aws_security_group.my-tf-vpc-sg.id]
-
-  tags = {
-    Name = "my-tf-ec2"
-  }
-}
-
-resource "aws_s3_bucket" "terraform_state" {
-  bucket = "ozort-terraform-state-file"
-
-  # Prevent accidental deletion of this S3 bucket
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "aws_s3_bucket_versioning" "enabled" {
-  bucket = aws_s3_bucket.terraform_state.id
-  versioning_configuration {
-    status = "Enabled"
-  }
-}
-
-resource "aws_s3_bucket_server_side_encryption_configuration" "default" {
-  bucket = aws_s3_bucket.terraform_state.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      sse_algorithm = "AES256"
-    }
-  }
-}
-
-resource "aws_s3_bucket_public_access_block" "public_access" {
-  bucket                  = aws_s3_bucket.terraform_state.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-resource "aws_dynamodb_table" "terraform_locks" {
-  name         = "terraform-up-and-running-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
+  instance-type = var.instance-type
+  key           = var.key
+  subnet_1_id = module.vpc.subnet_1_id
+  subnet_2_id = module.vpc.subnet_2_id
+  sg_id         = module.vpc.sg_id
 }

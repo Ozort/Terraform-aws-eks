@@ -1,17 +1,17 @@
 output "endpoint" {
-  value = aws_eks_cluster.eks.endpoint
+  value = module.iam.endpoint
 }
 
-output "security_group_public" {
-   value = "${aws_security_group.worker_node_sg.id}"
+output "worker_node_sg_id" {
+  value = module.vpc.sg_id
 }
 
 output "s3_bucket_arn" {
-  value       = aws_s3_bucket.terraform_state.arn
+  value       = module.state.s3_bucket_arn
   description = "The ARN of the S3 bucket"
 }
 
 output "dynamodb_table_name" {
-  value       = aws_dynamodb_table.terraform_locks.name
+  value       = module.state.dynamodb_table_name
   description = "The name of the DynamoDB table"
 }
